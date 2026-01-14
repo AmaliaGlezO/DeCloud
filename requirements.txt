@@ -1,0 +1,26 @@
+# Data Access & STAC
+pystac-client
+planetary-computer
+
+# Geospatial Data Processing
+rasterio
+rioxarray
+xarray
+
+# Scientific Computing
+numpy
+
+# Visualization
+matplotlib
+
+# Deep Learning
+torch
+torchvision
+torchmetrics
+segmentation-models-pytorch
+
+# Data Augmentation
+albumentations
+
+
+
