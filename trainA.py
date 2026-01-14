@@ -37,7 +37,7 @@ class Entrenador:
         if self.config.get('distillation') and self.teacher:
             self.teacher.to(self.device)
             self.teacher.eval() # Congelado
-            print("🎓 Knowledge Distillation Activado")
+            print("Knowledge Distillation Activado")
 
         # Configurar Pérdida
         self.criterion = self._get_loss_function(config['loss'])
