@@ -1,3 +1,8 @@
 data/
 extraido/
 cloud_dataset_s2/
+pairs_patches_sample/
+pairs_patches_sample_v2/
+train_features/
+train_labels/
+*.pth
