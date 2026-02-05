@@ -8,7 +8,7 @@ BASE_DATA_URL = (
     "https://data.source.coop/radiantearth/"
     "cloud-cover-detection-challenge/final/public"
 )
-OUT_DIR = "train_features"
+OUT_DIR = "train_labels"
 CSV_FILE = "train_metadata.csv"
 
 BANDS = ["B02.tif", "B03.tif", "B04.tif", "B08.tif", "B11.tif", "B12.tif"]
@@ -28,11 +28,10 @@ for row in rows:
     chip_out = os.path.join(OUT_DIR, chip_id)
     os.makedirs(chip_out, exist_ok=True)
 
-    for band in BANDS:
-        file_url = f"{BASE_DATA_URL}/{cloudpath}/{band}"
-        out_path = os.path.join(chip_out, band)
-        if not os.path.exists(out_path):
-            tasks.append((file_url, out_path))
+    label_url = f"{BASE_DATA_URL}/train_labels/{chip_id}.tif"
+    label_out = os.path.join(chip_out, "label.tif")
+    if not os.path.exists(label_out):
+        tasks.append((label_url, label_out))
 
 
 def download_one(args):
@@ -59,3 +58,11 @@ with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
         msg = f.result()
         if not msg.startswith("OK"):
             print(msg)
+
+
+
+
+
+
+
+
