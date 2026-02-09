@@ -23,3 +23,7 @@ En la segunda etapa, el sistema utiliza la imagen original junto con la máscara
 - Estudio del crecimiento de ciudades
 
 - Observación de zonas afectadas por desastres naturales
+
+Cloud removal in Sentinel-2 imagery using a deep residual neural network and SAR-optical data fusion: https://pubmed.ncbi.nlm.nih.gov/32747852/
+
+Sentinel-2 Cloud Cover Segmentation Dataset:https://source.coop/radiantearth/cloud-cover-detection-challenge/final/public
