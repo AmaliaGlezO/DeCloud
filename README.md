@@ -1,29 +1,245 @@
-# DeCloud
-
-Este proyecto presenta un sistema basado en redes neuronales cuyo objetivo es eliminar nubes de imágenes satelitales y reconstruir, de la forma más realista posible, la información que queda oculta bajo ellas. Las imágenes utilizadas provienen del satélite Sentinel-2, que ofrece información multiespectral muy valiosa, pero que con frecuencia se ve afectada por la presencia de nubes, lo que limita su uso en tareas de análisis territorial, ambiental o agrícola.
-
-## ¿Qué hace?
-La idea principal del trabajo es abordar el problema en dos etapas (Model A, Model B). En lugar de intentar reconstruir directamente una imagen sin nubes, el sistema primero aprende a identificar con precisión qué partes de la imagen están cubiertas por nubes y, solo después, utiliza esa información para reconstruir las zonas ocultas. Este enfoque permite simplificar el aprendizaje de cada modelo y obtener resultados más estables.
-
-## Model A
-En la primera etapa se utiliza una red neuronal de segmentación que recibe como entrada una imagen satelital multibanda y produce como salida una máscara que indica, píxel a píxel, la presencia o ausencia de nubes. Para esta tarea se emplea una arquitectura tipo U-Net, muy utilizada en segmentación de imágenes, ya que permite capturar tanto el contexto global de la escena como los detalles finos gracias a su estructura de encoder-decoder y a las conexiones entre niveles. Este modelo no elimina las nubes, sino que aprende únicamente a localizarlas de forma precisa.
-
-## Model B
-En la segunda etapa, el sistema utiliza la imagen original junto con la máscara de nubes generada en la etapa anterior para reconstruir las zonas cubiertas. Este modelo aprende a rellenar esas áreas utilizando la información del entorno y las distintas bandas espectrales, generando una imagen completa que intenta ser coherente. Para esta reconstrucción se pueden emplear modelos generativos, como redes adversarias (GANs), o arquitecturas más recientes basadas en mecanismos de atención, como los Transformers. En ambos casos, el objetivo es que la imagen final se aproxime lo máximo posible a una imagen real sin nubes.
 
 
-## ¿Para qué sirve?
+# Cloud Detection & Cloud Removal 
 
-- Este proyecto puede ser útil para cualquiera que trabaje con imágenes satelitales y necesite ver el terreno completo, incluso cuando hay nubes. Por ejemplo:
+**Dataset:** 38-Cloud (Landsat 8)
+**Objetivo:** Detección precisa de nubes + reconstrucción visual de regiones cubiertas
 
-- Análisis de cultivos y zonas agrícolas
+---
 
-- Monitoreo de bosques y áreas naturales
+## Diagnóstico de datos
 
-- Estudio del crecimiento de ciudades
+### Limitación fundamental del dataset
 
-- Observación de zonas afectadas por desastres naturales
+El dataset **NO contiene imágenes limpias del mismo lugar** sin nubes.
+Por tanto:
 
-Cloud removal in Sentinel-2 imagery using a deep residual neural network and SAR-optical data fusion: https://pubmed.ncbi.nlm.nih.gov/32747852/
+* No se puede entrenar *cloud removal supervisado clásico*
+* No existe ground truth real “sin nubes”
 
-Sentinel-2 Cloud Cover Segmentation Dataset:https://source.coop/radiantearth/cloud-cover-detection-challenge/final/public
+### Posible Solución
+
+Separar el problema en **dos tareas**:
+
+1. **Detección de nubes (segmentación)**
+2. **Reconstrucción (inpainting) condicionada por máscara**
+
+Esto evita falsos supuestos y mantiene coherencia física.
+
+---
+
+## Visión general del pipeline
+
+```
+[R, G, B, NIR]  ──────►  Cloud Detector (Attention U-Net)
+                               │
+                               ▼
+                        Cloud Mask (0/1)
+                               │
+                               ▼
+[R, G, B, NIR, Mask] ─►  Cloud Inpainting U-Net
+                               │
+                               ▼
+                 Imagen reconstruida (RGB / RGB+NIR)
+```
+
+**Dos modelos separados, entrenados con objetivos distintos**
+
+---
+
+## MODELO 1 — Cloud Detection
+
+### Objetivo
+
+Detectar **nubes a nivel de píxel** con alta precisión.
+
+### Input
+
+* 4 canales:
+
+  * Red (B4)
+  * Green (B3)
+  * Blue (B2)
+  * NIR (B5)
+
+```
+Input shape: (4, 384, 384)
+```
+
+### Output
+
+* Máscara binaria:
+
+```
+Output shape: (1, 384, 384)
+0 = no nube
+1 = nube
+```
+
+---
+
+### Arquitectura
+
+**Attention U-Net**
+
+* Encoder–decoder
+* Skip connections con **attention gates**
+* Mejor detección de:
+
+  * nubes delgadas
+  * bordes suaves
+  * confusión con nieve / bruma
+
+Arquitectura probada en medical imaging → perfecta para nubes.
+
+---
+
+### Loss function
+
+```
+Loss = BCE + Dice
+```
+
+* BCE: estabilidad
+* Dice: penaliza falsos negativos (nubes finas)
+
+---
+
+### Métricas
+
+* IoU
+* Dice coefficient
+* Precision / Recall
+* Visualización de máscaras superpuestas
+
+---
+
+### Output del modelo
+
+* Modelo guardado por epoch
+* Mejor modelo según IoU validación
+
+---
+### Citados 2 papers que hacen lo mismo
+```  
+@INPROCEEDINGS{38-cloud-1,
+  author={S. {Mohajerani} and P. {Saeedi}},
+  booktitle={IGARSS 2019 - 2019 IEEE International Geoscience and Remote Sensing Symposium},
+  title={Cloud-Net: An End-To-End Cloud Detection Algorithm for Landsat 8 Imagery},
+  year={2019},
+  volume={},
+  number={},
+  pages={1029-1032},
+  doi={10.1109/IGARSS.2019.8898776},
+  ISSN={2153-6996},
+  month={July},
+}
+
+@INPROCEEDINGS{38-cloud-2,   
+  author={S. Mohajerani and T. A. Krammer and P. Saeedi},   
+  booktitle={2018 IEEE 20th International Workshop on Multimedia Signal Processing (MMSP)},   
+  title={{"A Cloud Detection Algorithm for Remote Sensing Images Using Fully Convolutional Neural Networks"}},   
+  year={2018},    
+  pages={1-5},   
+  doi={10.1109/MMSP.2018.8547095},   
+  ISSN={2473-3628},   
+  month={Aug},  
+}
+```
+
+## MODELO 2 — Cloud Removal (Inpainting condicional)
+
+### Objetivo
+
+Reconstruir regiones cubiertas por nubes **sin ground truth limpio**, usando aprendizaje auto-supervisado.
+
+---
+
+## Idea clave 
+
+**No intentamos quitar nubes reales durante el entrenamiento**
+
+En su lugar:
+
+1. Usamos **zonas SIN nubes**
+2. Generamos **máscaras artificiales**
+3. Entrenamos al modelo a reconstruirlas
+4. En inferencia, aplicamos el modelo a nubes reales
+
+📌 Esto es *self-supervised inpainting*.
+
+---
+
+### Input
+
+```
+[R, G, B, NIR, Mask]
+```
+
+* Mask = 1 → zona a reconstruir
+* Mask = 0 → zona válida
+
+```
+Input shape: (5, 384, 384)
+```
+
+---
+
+### Output
+
+* Imagen reconstruida:
+
+```
+Output shape: (4, 384, 384)
+```
+
+---
+
+### Arquitectura
+
+**U-Net para inpainting**, con:
+
+* Partial Convolutions **o**
+* Attention en skip connections
+* Normalización por máscara
+
+El modelo **NO ve píxeles ocultos**.
+
+---
+
+### Loss física (solo en zona oculta)
+
+```
+Loss = L1_masked + SSIM_masked
+```
+
+Donde:
+
+* L1 → fidelidad espectral
+* SSIM → coherencia estructural
+* Calculada **solo donde mask == 1**
+
+Esto evita:
+
+* copiar píxeles visibles
+* blur innecesario
+
+---
+
+### Métricas visuales reales
+
+No hay métricas clásicas de test, así que:
+
+* Comparación visual
+* Error L1 en zonas simuladas
+* Evolución temporal por epoch
+* GIFs de reconstrucción
+
+---
+# Modelo 3 Cloud Removal 
+La idea de proponer este tercer modelo fue hacer comparaciones con la propuesta que tenía y con otra manera de reconstruir el terreno borrando las nubes en imágenes satelitales.
+
+Para este modelo se usó otro dataset con pares de imágenes limpias y con nubes de las mismas zonas, y se propone una arquitectura U-Net modificada que toma como entrada de 4 canales: los 3 canales RGB de la imagen con nubes más un canal adicional de máscara binaria que identifica las regiones nubosas. Esta máscara se genera automáticamente mediante un modelo de segmentación preentrenado. La pérdida combinada (L1 total ponderada) prioriza la reconstrucción en las áreas nubladas mientras preserva las regiones ya limpias, aprovechando así información guiada para mejorar la remoción de nubes.
+
+---
+### Dentro de la carpeta models abrir Model_1_2_3.ipynb
